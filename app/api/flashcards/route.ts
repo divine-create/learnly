@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { retrieveRelevantChunks } from '@/lib/rag'
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -32,23 +34,16 @@ export async function POST(req: NextRequest) {
   let cards: Array<{ front: string; back: string }> = []
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-    const res = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: `Generate 8 flashcards from these lesson materials about "${lesson.topic}".
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+    const result = await model.generateContent(`Generate 8 flashcards from these lesson materials about "${lesson.topic}".
 Materials: ${chunks.join('\n\n')}
 Return ONLY a JSON array: [{"front": "question or term", "back": "answer or definition"}]
-Make each card concise and educational. No markdown, just JSON.`,
-      }],
-    })
-    const text = res.content[0].type === 'text' ? res.content[0].text : '[]'
+Make each card concise and educational. No markdown, just JSON.`)
+
+    const text = result.response.text()
     const match = text.match(/\[[\s\S]*\]/)
     cards = JSON.parse(match?.[0] ?? '[]')
   } catch {
-    // Fallback cards from chunk content
     cards = chunks.slice(0, 5).map((chunk, i) => ({
       front: `Key concept ${i + 1} from ${lesson.topic}`,
       back: chunk.slice(0, 200),

@@ -1,6 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
 
 type AgeGroup = 'primary' | 'secondary'
 
@@ -28,7 +28,7 @@ export async function askCody({
   const ageGroup = getAgeGroup(gradeLevel)
   const isPrimary = ageGroup === 'primary'
 
-  const systemPrompt = `You are Cody, a friendly and encouraging coding tutor for Nigerian school students.
+  const systemInstruction = `You are Cody, a friendly and encouraging coding tutor for Nigerian school students.
 
 CONTEXT FROM TEACHER'S MATERIALS:
 ${contextChunks.length > 0 ? contextChunks.map((c, i) => `[Source ${i + 1}]: ${c}`).join('\n\n') : 'No specific materials available for this topic yet. Use your general knowledge but keep it curriculum-appropriate.'}
@@ -49,19 +49,21 @@ BEHAVIOUR RULES:
 - ${isPrimary ? 'Max 60 words.' : 'Max 200 words.'}
 - You teach coding (Python, Scratch, web development, algorithms). Stay on topic.`
 
-  const messages = [
-    ...history,
-    { role: 'user' as const, content: question },
-  ]
-
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: isPrimary ? 200 : 500,
-    system: systemPrompt,
-    messages,
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    systemInstruction,
   })
 
-  return response.content[0].type === 'text' ? response.content[0].text : ''
+  const chat = model.startChat({
+    history: history.map(h => ({
+      role: h.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: h.content }],
+    })),
+    generationConfig: { maxOutputTokens: isPrimary ? 200 : 500 },
+  })
+
+  const result = await chat.sendMessage(question)
+  return result.response.text()
 }
 
 export async function generateQuiz({
@@ -100,13 +102,9 @@ Generate exactly ${numQuestions} quiz questions as a JSON array. Each question m
 
 Return ONLY valid JSON array. No markdown, no explanation. Start with [ and end with ].`
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4000,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '[]'
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const result = await model.generateContent(prompt)
+  const text = result.response.text()
 
   try {
     const jsonMatch = text.match(/\[[\s\S]*\]/)

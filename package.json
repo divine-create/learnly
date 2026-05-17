@@ -13,7 +13,7 @@
     "setup": "npm install && prisma generate && prisma db push && npm run db:seed"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.27.0",
+    "@google/generative-ai": "^0.24.1",
     "@monaco-editor/react": "^4.7.0",
     "@prisma/client": "^5.16.0",
     "bcryptjs": "^2.4.3",

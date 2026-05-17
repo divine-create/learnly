@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -8,15 +10,9 @@ export async function POST(req: NextRequest) {
 
   const { topic, gradeLevel, subject, duration } = await req.json()
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
   try {
-    const res = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: `Create a detailed lesson plan for a Nigerian school teacher.
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+    const result = await model.generateContent(`Create a detailed lesson plan for a Nigerian school teacher.
 
 Topic: ${topic}
 Subject: ${subject}
@@ -32,11 +28,9 @@ Structure it as HTML with these sections:
 - Wrap-up & Assessment (5 mins)
 - Homework Assignment
 
-Use proper HTML tags (h2, h3, ul, li, p, strong). Keep it practical for Nigerian classrooms. Reference NERDC ICT curriculum where relevant.`,
-      }],
-    })
-    const content = res.content[0].type === 'text' ? res.content[0].text : ''
-    return NextResponse.json({ content })
+Use proper HTML tags (h2, h3, ul, li, p, strong). Keep it practical for Nigerian classrooms. Reference NERDC ICT curriculum where relevant.`)
+
+    return NextResponse.json({ content: result.response.text() })
   } catch {
     return NextResponse.json({
       content: `<h2>Lesson Plan: ${topic}</h2><p>AI generation unavailable. Please check your API key and try again.</p>`,

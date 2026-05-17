@@ -1,0 +1,247 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model School {
+  id          String   @id @default(cuid())
+  name        String
+  state       String
+  lga         String
+  type        String   // primary | secondary | both
+  code        String   @unique
+  plan        String   @default("starter") // starter | growth | institution
+  planExpiry  DateTime?
+  logoUrl     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  users       User[]
+  classes     Class[]
+  quizzes     Quiz[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  schoolId     String?
+  role         String   // SUPER_ADMIN | SCHOOL_ADMIN | TEACHER | STUDENT | PARENT
+  name         String
+  email        String   @unique
+  passwordHash String
+  avatarUrl    String?
+  gradeLevel   String?  // for students
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  school             School?          @relation(fields: [schoolId], references: [id])
+  taughtClasses      Class[]          @relation("TeacherClasses")
+  classEnrollments   ClassStudent[]
+  tutorSessions      TutorSession[]
+  tutorMessages      TutorMessage[]
+  quizAttempts       QuizAttempt[]
+  studentXp          StudentXP?
+  studentBadges      StudentBadge[]
+  uploadedMaterials  Material[]
+  children           ParentChild[]    @relation("ParentChildren")
+  parents            ParentChild[]    @relation("ChildParents")
+  lessonProgress     LessonProgress[]
+}
+
+model ParentChild {
+  parentId  String
+  childId   String
+  parent    User   @relation("ParentChildren", fields: [parentId], references: [id])
+  child     User   @relation("ChildParents", fields: [childId], references: [id])
+
+  @@id([parentId, childId])
+}
+
+model Class {
+  id         String   @id @default(cuid())
+  schoolId   String
+  teacherId  String
+  name       String
+  gradeLevel String
+  subject    String
+  code       String   @unique
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  school   School         @relation(fields: [schoolId], references: [id])
+  teacher  User           @relation("TeacherClasses", fields: [teacherId], references: [id])
+  students ClassStudent[]
+  lessons  Lesson[]
+}
+
+model ClassStudent {
+  classId   String
+  studentId String
+  joinedAt  DateTime @default(now())
+
+  class   Class @relation(fields: [classId], references: [id])
+  student User  @relation(fields: [studentId], references: [id])
+
+  @@id([classId, studentId])
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  classId     String
+  title       String
+  topic       String
+  description String?
+  orderIndex  Int      @default(0)
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  class      Class            @relation(fields: [classId], references: [id])
+  materials  Material[]
+  quizzes    Quiz[]
+  sessions   TutorSession[]
+  progress   LessonProgress[]
+}
+
+model Material {
+  id         String   @id @default(cuid())
+  lessonId   String
+  teacherId  String
+  fileName   String
+  fileUrl    String
+  fileType   String   // pdf | docx | pptx | txt | video
+  fileSize   Int
+  status     String   @default("processing") // processing | ready | failed
+  createdAt  DateTime @default(now())
+
+  lesson  Lesson          @relation(fields: [lessonId], references: [id])
+  teacher User            @relation(fields: [teacherId], references: [id])
+  chunks  MaterialChunk[]
+}
+
+model MaterialChunk {
+  id         String  @id @default(cuid())
+  materialId String
+  chunkText  String
+  chunkIndex Int
+  embedding  String? // JSON array of floats stored as string (pgvector-ready)
+  metadata   String  @default("{}") // JSON string
+
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+}
+
+model LessonProgress {
+  id          String    @id @default(cuid())
+  lessonId    String
+  studentId   String
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  timeSpent   Int       @default(0) // seconds
+
+  lesson  Lesson @relation(fields: [lessonId], references: [id])
+  student User   @relation(fields: [studentId], references: [id])
+
+  @@unique([lessonId, studentId])
+}
+
+model TutorSession {
+  id        String    @id @default(cuid())
+  studentId String
+  lessonId  String?
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  student  User           @relation(fields: [studentId], references: [id])
+  lesson   Lesson?        @relation(fields: [lessonId], references: [id])
+  messages TutorMessage[]
+}
+
+model TutorMessage {
+  id         String   @id @default(cuid())
+  sessionId  String
+  studentId  String
+  role       String   // user | assistant
+  content    String
+  chunksUsed String   @default("[]") // JSON array of chunk IDs used
+  createdAt  DateTime @default(now())
+
+  session TutorSession @relation(fields: [sessionId], references: [id])
+  student User         @relation(fields: [studentId], references: [id])
+}
+
+model Quiz {
+  id               String   @id @default(cuid())
+  lessonId         String
+  schoolId         String
+  title            String
+  timeLimitSeconds Int      @default(300)
+  status           String   @default("draft") // draft | published
+  totalXp          Int      @default(100)
+  createdAt        DateTime @default(now())
+
+  lesson    Lesson        @relation(fields: [lessonId], references: [id])
+  school    School        @relation(fields: [schoolId], references: [id])
+  questions Question[]
+  attempts  QuizAttempt[]
+}
+
+model Question {
+  id           String  @id @default(cuid())
+  quizId       String
+  type         String  // mcq | true_false | fill_blank | spot_bug
+  question     String
+  options      String  // JSON array
+  correctIndex Int
+  explanation  String
+  xp           Int     @default(10)
+  orderIndex   Int     @default(0)
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+}
+
+model QuizAttempt {
+  id          String   @id @default(cuid())
+  quizId      String
+  studentId   String
+  score       Int
+  xpEarned    Int
+  timeTaken   Int      // seconds
+  answers     String   // JSON array
+  completedAt DateTime @default(now())
+
+  quiz    Quiz @relation(fields: [quizId], references: [id])
+  student User @relation(fields: [studentId], references: [id])
+}
+
+model StudentXP {
+  studentId  String @id
+  totalXp    Int    @default(0)
+  streakDays Int    @default(0)
+  lastActive DateTime @default(now())
+
+  student User @relation(fields: [studentId], references: [id])
+}
+
+model Badge {
+  id          String @id @default(cuid())
+  name        String
+  description String
+  icon        String
+  condition   String // JSON condition descriptor
+  xpRequired  Int    @default(0)
+
+  studentBadges StudentBadge[]
+}
+
+model StudentBadge {
+  studentId String
+  badgeId   String
+  earnedAt  DateTime @default(now())
+
+  student User  @relation(fields: [studentId], references: [id])
+  badge   Badge @relation(fields: [badgeId], references: [id])
+
+  @@id([studentId, badgeId])
+}

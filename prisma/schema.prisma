@@ -12,43 +12,54 @@ model School {
   name        String
   state       String
   lga         String
-  type        String   // primary | secondary | both
+  type        String
   code        String   @unique
-  plan        String   @default("starter") // starter | growth | institution
+  plan        String   @default("starter")
   planExpiry  DateTime?
   logoUrl     String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  users       User[]
-  classes     Class[]
-  quizzes     Quiz[]
+  users         User[]
+  classes       Class[]
+  quizzes       Quiz[]
+  announcements Announcement[]
+  termPeriods   TermPeriod[]
+  dailyChallenges DailyChallenge[]
 }
 
 model User {
   id           String   @id @default(cuid())
   schoolId     String?
-  role         String   // SUPER_ADMIN | SCHOOL_ADMIN | TEACHER | STUDENT | PARENT
+  role         String
   name         String
   email        String   @unique
   passwordHash String
   avatarUrl    String?
-  gradeLevel   String?  // for students
+  gradeLevel   String?
   isActive     Boolean  @default(true)
+  darkMode     Boolean  @default(false)
   createdAt    DateTime @default(now())
 
-  school             School?          @relation(fields: [schoolId], references: [id])
-  taughtClasses      Class[]          @relation("TeacherClasses")
-  classEnrollments   ClassStudent[]
-  tutorSessions      TutorSession[]
-  tutorMessages      TutorMessage[]
-  quizAttempts       QuizAttempt[]
-  studentXp          StudentXP?
-  studentBadges      StudentBadge[]
-  uploadedMaterials  Material[]
-  children           ParentChild[]    @relation("ParentChildren")
-  parents            ParentChild[]    @relation("ChildParents")
-  lessonProgress     LessonProgress[]
+  school               School?              @relation(fields: [schoolId], references: [id])
+  taughtClasses        Class[]              @relation("TeacherClasses")
+  classEnrollments     ClassStudent[]
+  tutorSessions        TutorSession[]
+  tutorMessages        TutorMessage[]
+  quizAttempts         QuizAttempt[]
+  studentXp            StudentXP?
+  studentBadges        StudentBadge[]
+  uploadedMaterials    Material[]
+  children             ParentChild[]        @relation("ParentChildren")
+  parents              ParentChild[]        @relation("ChildParents")
+  lessonProgress       LessonProgress[]
+  assignmentSubmissions AssignmentSubmission[]
+  attendanceRecords    Attendance[]
+  screenTime           ScreenTime[]
+  sentMessages         Message[]            @relation("SentMessages")
+  receivedMessages     Message[]            @relation("ReceivedMessages")
+  dailyChallengeAttempts DailyChallengeAttempt[]
+  announcements        Announcement[]
 }
 
 model ParentChild {
@@ -56,7 +67,6 @@ model ParentChild {
   childId   String
   parent    User   @relation("ParentChildren", fields: [parentId], references: [id])
   child     User   @relation("ChildParents", fields: [childId], references: [id])
-
   @@id([parentId, childId])
 }
 
@@ -71,21 +81,33 @@ model Class {
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
 
-  school   School         @relation(fields: [schoolId], references: [id])
-  teacher  User           @relation("TeacherClasses", fields: [teacherId], references: [id])
-  students ClassStudent[]
-  lessons  Lesson[]
+  school        School         @relation(fields: [schoolId], references: [id])
+  teacher       User           @relation("TeacherClasses", fields: [teacherId], references: [id])
+  students      ClassStudent[]
+  lessons       Lesson[]
+  assignments   Assignment[]
+  attendanceLogs Attendance[]
+  announcements Announcement[]
 }
 
 model ClassStudent {
   classId   String
   studentId String
   joinedAt  DateTime @default(now())
-
   class   Class @relation(fields: [classId], references: [id])
   student User  @relation(fields: [studentId], references: [id])
-
   @@id([classId, studentId])
+}
+
+model TermPeriod {
+  id        String   @id @default(cuid())
+  schoolId  String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now())
+  school    School   @relation(fields: [schoolId], references: [id])
 }
 
 model Lesson {
@@ -94,6 +116,7 @@ model Lesson {
   title       String
   topic       String
   description String?
+  richContent String?  // HTML from lesson builder
   orderIndex  Int      @default(0)
   isPublished Boolean  @default(false)
   createdAt   DateTime @default(now())
@@ -103,6 +126,7 @@ model Lesson {
   quizzes    Quiz[]
   sessions   TutorSession[]
   progress   LessonProgress[]
+  flashcards Flashcard[]
 }
 
 model Material {
@@ -111,9 +135,9 @@ model Material {
   teacherId  String
   fileName   String
   fileUrl    String
-  fileType   String   // pdf | docx | pptx | txt | video
+  fileType   String
   fileSize   Int
-  status     String   @default("processing") // processing | ready | failed
+  status     String   @default("processing")
   createdAt  DateTime @default(now())
 
   lesson  Lesson          @relation(fields: [lessonId], references: [id])
@@ -126,9 +150,8 @@ model MaterialChunk {
   materialId String
   chunkText  String
   chunkIndex Int
-  embedding  String? // JSON array of floats stored as string (pgvector-ready)
-  metadata   String  @default("{}") // JSON string
-
+  embedding  String?
+  metadata   String  @default("{}")
   material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
 }
 
@@ -138,12 +161,128 @@ model LessonProgress {
   studentId   String
   completed   Boolean   @default(false)
   completedAt DateTime?
-  timeSpent   Int       @default(0) // seconds
-
+  timeSpent   Int       @default(0)
   lesson  Lesson @relation(fields: [lessonId], references: [id])
   student User   @relation(fields: [studentId], references: [id])
-
   @@unique([lessonId, studentId])
+}
+
+model Flashcard {
+  id       String @id @default(cuid())
+  lessonId String
+  front    String
+  back     String
+  order    Int    @default(0)
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+}
+
+model Assignment {
+  id          String    @id @default(cuid())
+  classId     String
+  title       String
+  description String
+  dueDate     DateTime
+  maxScore    Int       @default(100)
+  language    String    @default("python")
+  starterCode String?
+  isPublished Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  class       Class                  @relation(fields: [classId], references: [id])
+  submissions AssignmentSubmission[]
+}
+
+model AssignmentSubmission {
+  id           String    @id @default(cuid())
+  assignmentId String
+  studentId    String
+  code         String
+  score        Int?
+  feedback     String?
+  submittedAt  DateTime  @default(now())
+  gradedAt     DateTime?
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+  student    User       @relation(fields: [studentId], references: [id])
+  @@unique([assignmentId, studentId])
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  classId   String
+  studentId String
+  date      String   // YYYY-MM-DD
+  status    String   @default("present") // present | absent | late
+  note      String?
+  class   Class @relation(fields: [classId], references: [id])
+  student User  @relation(fields: [studentId], references: [id])
+  @@unique([classId, studentId, date])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  schoolId  String?
+  classId   String?
+  authorId  String
+  title     String
+  content   String
+  priority  String   @default("normal") // normal | urgent
+  createdAt DateTime @default(now())
+
+  school School? @relation(fields: [schoolId], references: [id])
+  class  Class?  @relation(fields: [classId], references: [id])
+  author User    @relation(fields: [authorId], references: [id])
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  senderId    String
+  recipientId String
+  subject     String
+  content     String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  sender    User @relation("SentMessages", fields: [senderId], references: [id])
+  recipient User @relation("ReceivedMessages", fields: [recipientId], references: [id])
+}
+
+model DailyChallenge {
+  id          String   @id @default(cuid())
+  schoolId    String?
+  date        String   @unique // YYYY-MM-DD
+  title       String
+  description String
+  language    String   @default("python")
+  starterCode String
+  solution    String
+  xp          Int      @default(50)
+  difficulty  String   @default("easy")
+
+  school   School?                  @relation(fields: [schoolId], references: [id])
+  attempts DailyChallengeAttempt[]
+}
+
+model DailyChallengeAttempt {
+  id          String   @id @default(cuid())
+  challengeId String
+  studentId   String
+  code        String
+  passed      Boolean  @default(false)
+  submittedAt DateTime @default(now())
+
+  challenge DailyChallenge @relation(fields: [challengeId], references: [id])
+  student   User           @relation(fields: [studentId], references: [id])
+  @@unique([challengeId, studentId])
+}
+
+model ScreenTime {
+  id        String   @id @default(cuid())
+  studentId String
+  date      String   // YYYY-MM-DD
+  minutes   Int      @default(0)
+  student User @relation(fields: [studentId], references: [id])
+  @@unique([studentId, date])
 }
 
 model TutorSession {
@@ -152,7 +291,6 @@ model TutorSession {
   lessonId  String?
   startedAt DateTime  @default(now())
   endedAt   DateTime?
-
   student  User           @relation(fields: [studentId], references: [id])
   lesson   Lesson?        @relation(fields: [lessonId], references: [id])
   messages TutorMessage[]
@@ -162,11 +300,10 @@ model TutorMessage {
   id         String   @id @default(cuid())
   sessionId  String
   studentId  String
-  role       String   // user | assistant
+  role       String
   content    String
-  chunksUsed String   @default("[]") // JSON array of chunk IDs used
+  chunksUsed String   @default("[]")
   createdAt  DateTime @default(now())
-
   session TutorSession @relation(fields: [sessionId], references: [id])
   student User         @relation(fields: [studentId], references: [id])
 }
@@ -177,7 +314,7 @@ model Quiz {
   schoolId         String
   title            String
   timeLimitSeconds Int      @default(300)
-  status           String   @default("draft") // draft | published
+  status           String   @default("draft")
   totalXp          Int      @default(100)
   createdAt        DateTime @default(now())
 
@@ -190,14 +327,13 @@ model Quiz {
 model Question {
   id           String  @id @default(cuid())
   quizId       String
-  type         String  // mcq | true_false | fill_blank | spot_bug
+  type         String
   question     String
-  options      String  // JSON array
+  options      String
   correctIndex Int
   explanation  String
   xp           Int     @default(10)
   orderIndex   Int     @default(0)
-
   quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
 }
 
@@ -207,20 +343,18 @@ model QuizAttempt {
   studentId   String
   score       Int
   xpEarned    Int
-  timeTaken   Int      // seconds
-  answers     String   // JSON array
+  timeTaken   Int
+  answers     String
   completedAt DateTime @default(now())
-
   quiz    Quiz @relation(fields: [quizId], references: [id])
   student User @relation(fields: [studentId], references: [id])
 }
 
 model StudentXP {
-  studentId  String @id
-  totalXp    Int    @default(0)
-  streakDays Int    @default(0)
+  studentId  String   @id
+  totalXp    Int      @default(0)
+  streakDays Int      @default(0)
   lastActive DateTime @default(now())
-
   student User @relation(fields: [studentId], references: [id])
 }
 
@@ -229,9 +363,8 @@ model Badge {
   name        String
   description String
   icon        String
-  condition   String // JSON condition descriptor
+  condition   String
   xpRequired  Int    @default(0)
-
   studentBadges StudentBadge[]
 }
 
@@ -239,9 +372,7 @@ model StudentBadge {
   studentId String
   badgeId   String
   earnedAt  DateTime @default(now())
-
   student User  @relation(fields: [studentId], references: [id])
   badge   Badge @relation(fields: [badgeId], references: [id])
-
   @@id([studentId, badgeId])
 }

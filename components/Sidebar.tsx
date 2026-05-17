@@ -4,9 +4,12 @@ import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, BookOpen, Users, Settings,
-  LogOut, Trophy, Brain, BarChart2, School,
-  GraduationCap, UserCheck, ChevronRight,
+  LayoutDashboard, BookOpen, Users, BarChart2, School,
+  GraduationCap, UserCheck, LogOut, Trophy, Brain,
+  ChevronRight, Mail, Zap, Layers, ClipboardList,
+  CalendarCheck, BookMarked, AlertTriangle, Wand2,
+  FileUp, Clock, Calendar, Award, FileText, Timer,
+  NotebookPen, Monitor, BarChart,
 } from 'lucide-react'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode }
@@ -22,23 +25,45 @@ const NAV: Record<string, NavItem[]> = {
     { href: '/admin/teachers', label: 'Teachers', icon: <GraduationCap size={18} /> },
     { href: '/admin/students', label: 'Students', icon: <UserCheck size={18} /> },
     { href: '/admin/classes', label: 'Classes', icon: <BookOpen size={18} /> },
+    { href: '/admin/terms', label: 'Academic Terms', icon: <Calendar size={18} /> },
+    { href: '/admin/announcements', label: 'Announcements', icon: <Layers size={18} /> },
+    { href: '/admin/bulk-import', label: 'Bulk Import', icon: <FileUp size={18} /> },
+    { href: '/admin/teacher-performance', label: 'Teacher Stats', icon: <BarChart size={18} /> },
     { href: '/admin/reports', label: 'Reports', icon: <BarChart2 size={18} /> },
+    { href: '/messages', label: 'Messages', icon: <Mail size={18} /> },
   ],
   TEACHER: [
     { href: '/teacher', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
     { href: '/teacher/classes', label: 'My Classes', icon: <BookOpen size={18} /> },
     { href: '/teacher/students', label: 'Students', icon: <Users size={18} /> },
     { href: '/teacher/quizzes', label: 'Quizzes', icon: <Trophy size={18} /> },
+    { href: '/teacher/assignments', label: 'Assignments', icon: <ClipboardList size={18} /> },
+    { href: '/teacher/attendance', label: 'Attendance', icon: <CalendarCheck size={18} /> },
+    { href: '/teacher/gradebook', label: 'Grade Book', icon: <BookMarked size={18} /> },
+    { href: '/teacher/struggle-alerts', label: 'Struggle Alerts', icon: <AlertTriangle size={18} /> },
+    { href: '/teacher/lesson-planner', label: 'Lesson Planner', icon: <Wand2 size={18} /> },
+    { href: '/messages', label: 'Messages', icon: <Mail size={18} /> },
   ],
   STUDENT: [
     { href: '/student', label: 'Home', icon: <LayoutDashboard size={18} /> },
     { href: '/student/classes', label: 'My Classes', icon: <BookOpen size={18} /> },
+    { href: '/student/assignments', label: 'Assignments', icon: <ClipboardList size={18} /> },
     { href: '/student/tutor', label: 'Ask Cody', icon: <Brain size={18} /> },
-    { href: '/student/badges', label: 'Badges & XP', icon: <Trophy size={18} /> },
+    { href: '/student/daily-challenge', label: 'Daily Challenge', icon: <Zap size={18} /> },
+    { href: '/student/leaderboard', label: 'Leaderboard', icon: <Trophy size={18} /> },
+    { href: '/student/badges', label: 'Badges & XP', icon: <Award size={18} /> },
+    { href: '/student/certificates', label: 'Certificates', icon: <FileText size={18} /> },
+    { href: '/student/exam-countdown', label: 'Exam Countdown', icon: <Timer size={18} /> },
+    { href: '/student/notes', label: 'Study Notes', icon: <NotebookPen size={18} /> },
+    { href: '/messages', label: 'Messages', icon: <Mail size={18} /> },
   ],
   PARENT: [
     { href: '/parent', label: 'Overview', icon: <LayoutDashboard size={18} /> },
     { href: '/parent/progress', label: "Child's Progress", icon: <BarChart2 size={18} /> },
+    { href: '/parent/report-card', label: 'Report Card', icon: <FileText size={18} /> },
+    { href: '/parent/screen-time', label: 'Screen Time', icon: <Monitor size={18} /> },
+    { href: '/parent/attendance', label: 'Attendance', icon: <CalendarCheck size={18} /> },
+    { href: '/messages', label: 'Messages', icon: <Mail size={18} /> },
   ],
 }
 
@@ -95,9 +120,10 @@ export default function Sidebar({ role, userName, schoolName }: Props) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-3 space-y-1">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {navItems.map(item => {
-          const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'))
+          const active = pathname === item.href || (item.href !== '/messages' && item.href !== '/' && pathname.startsWith(item.href + '/'))
+            || pathname === item.href
           return (
             <Link
               key={item.href}

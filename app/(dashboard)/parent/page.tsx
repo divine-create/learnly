@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { xpToLevel, formatDate } from '@/lib/utils'
 import { Trophy, BookOpen, Clock, Star } from 'lucide-react'
+import LinkChildForm from '@/components/LinkChildForm'
 
 export default async function ParentDashboard() {
   const session = await auth()
@@ -39,8 +40,9 @@ export default async function ParentDashboard() {
         <div className="card text-center py-16">
           <div className="text-5xl mb-4">👨‍👩‍👧</div>
           <h3 className="font-semibold text-gray-700 text-xl mb-2">No child linked yet</h3>
-          <p className="text-gray-500 mb-4">Ask your school admin to link your account to your child.</p>
-          <p className="text-xs text-gray-400">Your account email: {session.user.email}</p>
+          <p className="text-gray-500 mb-2">Enter your child's school email address to link their account.</p>
+          <p className="text-xs text-gray-400 mb-4">Your account: {session.user.email}</p>
+          <LinkChildForm />
         </div>
       ) : (
         childLinks.map(({ child }) => {

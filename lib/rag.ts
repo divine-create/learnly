@@ -2,39 +2,30 @@ import { GoogleGenerativeAI, TaskType } from '@google/generative-ai'
 import { prisma } from '@/lib/db'
 
 // Vector search for retrieved lesson material. Embeddings are produced by
-// Gemini's text-embedding-004 model and stored as JSON arrays; similarity is
-// computed in JS via cosine. When GEMINI_API_KEY is missing (e.g. local dev
-// without a key) or the API call fails, we fall back to a deterministic
-// TF-IDF embedding so the pipeline still works offline.
-//
-// In production this JS cosine scan is replaced by pgvector's <=> operator.
+// Gemini's text-embedding-004 model (768 dimensions) and stored in a pgvector
+// column; nearest-neighbour search uses pgvector's <=> cosine-distance
+// operator. When GEMINI_API_KEY is missing (e.g. local dev without a key) or
+// the API call fails, we fall back to a deterministic TF-IDF embedding — also
+// projected into 768 dimensions so it fits the same column.
 
+const EMBED_DIM = 768
 const EMBED_MODEL = 'text-embedding-004'
 const apiKey = process.env.GEMINI_API_KEY
 const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null
 
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0
-  const dot = a.reduce((sum, val, i) => sum + val * b[i], 0)
-  const magA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0))
-  const magB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0))
-  if (magA === 0 || magB === 0) return 0
-  return dot / (magA * magB)
-}
-
-// Deterministic 64-dim TF-IDF-style fallback (no external API required).
+// Deterministic TF-IDF-style fallback projected into EMBED_DIM dimensions.
 function simpleEmbed(text: string): number[] {
   const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/)
   const freq: Record<string, number> = {}
   words.forEach(w => { if (w) freq[w] = (freq[w] ?? 0) + 1 })
 
-  const vec = new Array(64).fill(0)
+  const vec = new Array(EMBED_DIM).fill(0)
   for (const [word, count] of Object.entries(freq)) {
     let hash = 0
     for (let i = 0; i < word.length; i++) {
       hash = (hash * 31 + word.charCodeAt(i)) & 0x7fffffff
     }
-    vec[hash % 64] += count
+    vec[hash % EMBED_DIM] += count
   }
 
   const mag = Math.sqrt(vec.reduce((s, v) => s + v * v, 0))
@@ -75,6 +66,12 @@ async function embedQuery(text: string): Promise<number[]> {
   }
 }
 
+// pgvector literal, e.g. "[0.1,0.2,...]". Returns null for wrong-sized vectors.
+function toVectorLiteral(vec: number[]): string | null {
+  if (vec.length !== EMBED_DIM) return null
+  return `[${vec.join(',')}]`
+}
+
 export function chunkText(text: string, chunkSize = 500, overlap = 50): string[] {
   const words = text.split(/\s+/)
   const chunks: string[] = []
@@ -97,15 +94,23 @@ export async function embedAndStoreChunks(
   const embeddings = await embedDocuments(chunks)
   const model = genAI ? EMBED_MODEL : 'tfidf'
 
-  const records = chunks.map((chunkText, chunkIndex) => ({
-    materialId,
-    chunkText,
-    chunkIndex,
-    embedding: JSON.stringify(embeddings[chunkIndex] ?? []),
-    metadata: JSON.stringify({ chunkIndex, length: chunkText.length, model }),
-  }))
-
-  await prisma.materialChunk.createMany({ data: records })
+  // The `embedding` column is an Unsupported pgvector type, so it can't be set
+  // through the typed client — insert the row, then set the vector via raw SQL.
+  for (let i = 0; i < chunks.length; i++) {
+    const row = await prisma.materialChunk.create({
+      data: {
+        materialId,
+        chunkText: chunks[i],
+        chunkIndex: i,
+        metadata: JSON.stringify({ chunkIndex: i, length: chunks[i].length, model }),
+      },
+      select: { id: true },
+    })
+    const literal = toVectorLiteral(embeddings[i] ?? [])
+    if (literal) {
+      await prisma.$executeRaw`UPDATE "MaterialChunk" SET embedding = ${literal}::vector WHERE id = ${row.id}`
+    }
+  }
 
   await prisma.material.update({
     where: { id: materialId },
@@ -118,29 +123,16 @@ export async function retrieveRelevantChunks(
   lessonId: string,
   topK = 5
 ): Promise<string[]> {
-  const queryVec = await embedQuery(query)
+  const literal = toVectorLiteral(await embedQuery(query))
+  if (!literal) return []
 
-  const chunks = await prisma.materialChunk.findMany({
-    where: {
-      material: { lessonId },
-    },
-    select: { chunkText: true, embedding: true },
-  })
-
-  if (chunks.length === 0) return []
-
-  const scored = chunks.map(chunk => {
-    try {
-      const vec = JSON.parse(chunk.embedding ?? '[]') as number[]
-      const score = cosineSimilarity(queryVec, vec)
-      return { text: chunk.chunkText, score }
-    } catch {
-      return { text: chunk.chunkText, score: 0 }
-    }
-  })
-
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-    .map(c => c.text)
+  const rows = await prisma.$queryRaw<{ chunkText: string }[]>`
+    SELECT mc."chunkText"
+    FROM "MaterialChunk" mc
+    JOIN "Material" m ON m.id = mc."materialId"
+    WHERE m."lessonId" = ${lessonId} AND mc.embedding IS NOT NULL
+    ORDER BY mc.embedding <=> ${literal}::vector
+    LIMIT ${topK}
+  `
+  return rows.map(r => r.chunkText)
 }

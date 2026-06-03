@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 model School {
@@ -151,12 +153,12 @@ model Material {
 }
 
 model MaterialChunk {
-  id         String  @id @default(cuid())
+  id         String                       @id @default(cuid())
   materialId String
   chunkText  String
   chunkIndex Int
-  embedding  String?
-  metadata   String  @default("{}")
+  embedding  Unsupported("vector(768)")?
+  metadata   String                       @default("{}")
   material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
 }
 

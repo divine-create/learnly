@@ -1,9 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { Zap, CheckCircle, Trophy, ArrowRight } from 'lucide-react'
+import { Zap, CheckCircle, Trophy, ArrowRight, Play, Terminal } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
+import { usePyodide } from '@/hooks/usePyodide'
 
 const CodeEditor = dynamic(() => import('@/components/CodeEditor'), { ssr: false })
 
@@ -22,40 +23,62 @@ const DIFF_COLORS: Record<string, string> = {
 export default function DailyChallengePage() {
   const [challenge, setChallenge] = useState<Challenge | null>(null)
   const [code, setCode] = useState('')
-  const [result, setResult] = useState<{ passed: boolean; xpEarned: number; solution?: string } | null>(null)
+  const [result, setResult] = useState<{ passed: boolean; xpEarned: number; solution?: string; earnedBadges?: string[] } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [output, setOutput] = useState<{ stdout: string; stderr: string } | null>(null)
+  const [running, setRunning] = useState(false)
+  const { runCode, loading: pyLoading } = usePyodide()
 
   useEffect(() => {
     fetch('/api/daily-challenge').then(r => r.json()).then(d => {
       setChallenge(d)
       setCode(d.attempts?.[0]?.code ?? d.starterCode)
-      if (d.attempts?.[0]?.passed) {
-        setResult({ passed: true, xpEarned: 0 })
-      }
+      if (d.attempts?.[0]?.passed) setResult({ passed: true, xpEarned: 0 })
       setLoading(false)
     })
   }, [])
 
+  async function run() {
+    if (!challenge || challenge.language !== 'python') return
+    setRunning(true)
+    setOutput(null)
+    const out = await runCode(code)
+    setOutput(out)
+    setRunning(false)
+  }
+
   async function submit() {
     if (!challenge) return
     setSubmitting(true)
+    // Run code to get output for server-side grading
+    let studentOutput = ''
+    if (challenge.language === 'python') {
+      const out = await runCode(code)
+      studentOutput = out.stdout
+      setOutput(out)
+    }
     const res = await fetch('/api/daily-challenge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ challengeId: challenge.id, code }),
+      body: JSON.stringify({ challengeId: challenge.id, code, output: studentOutput }),
     })
     const data = await res.json()
     setSubmitting(false)
     setResult(data)
-    if (data.passed) toast.success(`🎉 Correct! +${data.xpEarned} XP!`)
-    else toast.error('Not quite right. Try again or view the solution.')
+    if (data.passed) {
+      toast.success(`🎉 Correct! +${data.xpEarned} XP!`)
+      data.earnedBadges?.forEach((b: string) => toast.success(`Badge unlocked: ${b}`, { icon: '🏅' }))
+    } else {
+      toast.error('Not quite right — check your output and try again.')
+    }
   }
 
   if (loading) return <div className="p-8 text-gray-400">Loading today's challenge…</div>
   if (!challenge) return <div className="p-8 text-gray-500">No challenge available today.</div>
 
   const alreadySolved = challenge.attempts?.[0]?.passed
+  const isPython = challenge.language === 'python'
 
   return (
     <div className="p-6 md:p-8 max-w-3xl">
@@ -87,16 +110,37 @@ export default function DailyChallengePage() {
         </div>
       </div>
 
-      <div className="mb-4">
-        <label className="label">Your Code</label>
-        <CodeEditor
-          value={code}
-          onChange={setCode}
-          language={challenge.language}
-          height="250px"
-          readOnly={alreadySolved}
-        />
+      <div className="mb-2">
+        <div className="flex items-center justify-between mb-2">
+          <label className="label">Your Code</label>
+          {isPython && !alreadySolved && (
+            <button
+              onClick={run}
+              disabled={running || pyLoading}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            >
+              <Play size={13} />
+              {pyLoading ? 'Loading Python…' : running ? 'Running…' : 'Run Code'}
+            </button>
+          )}
+        </div>
+        <CodeEditor value={code} onChange={setCode} language={challenge.language} height="250px" readOnly={alreadySolved} />
       </div>
+
+      {/* Output panel */}
+      {output !== null && (
+        <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900 overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
+            <Terminal size={13} className="text-gray-400" />
+            <span className="text-xs text-gray-400 font-mono">Output</span>
+          </div>
+          <div className="p-3 font-mono text-sm min-h-[48px]">
+            {output.stdout && <pre className="text-green-400 whitespace-pre-wrap">{output.stdout}</pre>}
+            {output.stderr && <pre className="text-red-400 whitespace-pre-wrap">{output.stderr}</pre>}
+            {!output.stdout && !output.stderr && <span className="text-gray-500">No output</span>}
+          </div>
+        </div>
+      )}
 
       {!alreadySolved && (
         <button onClick={submit} disabled={submitting} className="btn-primary w-full py-3 text-base mb-4">

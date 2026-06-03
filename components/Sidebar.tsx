@@ -9,7 +9,7 @@ import {
   ChevronRight, Mail, Zap, Layers, ClipboardList,
   CalendarCheck, BookMarked, AlertTriangle, Wand2,
   FileUp, Clock, Calendar, Award, FileText, Timer,
-  NotebookPen, Monitor, BarChart,
+  NotebookPen, Monitor, BarChart, CreditCard,
 } from 'lucide-react'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode }
@@ -30,6 +30,7 @@ const NAV: Record<string, NavItem[]> = {
     { href: '/admin/bulk-import', label: 'Bulk Import', icon: <FileUp size={18} /> },
     { href: '/admin/teacher-performance', label: 'Teacher Stats', icon: <BarChart size={18} /> },
     { href: '/admin/reports', label: 'Reports', icon: <BarChart2 size={18} /> },
+    { href: '/admin/billing', label: 'Billing', icon: <CreditCard size={18} /> },
     { href: '/messages', label: 'Messages', icon: <Mail size={18} /> },
   ],
   TEACHER: [

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { Toaster } from 'react-hot-toast'
+import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar'
 
 export const metadata: Metadata = {
   title: 'CodeBridge Nigeria — AI Coding Education for Schools',
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="bg-gray-50 text-gray-900 antialiased">
+        <ServiceWorkerRegistrar />
         {children}
         <Toaster position="top-right" toastOptions={{
           duration: 3000,

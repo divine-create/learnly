@@ -3,9 +3,10 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-import { ArrowLeft, Send, CheckCircle, Star } from 'lucide-react'
+import { ArrowLeft, Send, CheckCircle, Star, Play, Terminal } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { formatDate } from '@/lib/utils'
+import { usePyodide } from '@/hooks/usePyodide'
 
 const CodeEditor = dynamic(() => import('@/components/CodeEditor'), { ssr: false })
 
@@ -21,6 +22,9 @@ export default function AssignmentDetailPage() {
   const [code, setCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [output, setOutput] = useState<{ stdout: string; stderr: string } | null>(null)
+  const [running, setRunning] = useState(false)
+  const { runCode, loading: pyLoading } = usePyodide()
 
   useEffect(() => {
     fetch(`/api/assignments/${params.id}`).then(r => r.json()).then(d => {
@@ -29,6 +33,15 @@ export default function AssignmentDetailPage() {
       setSubmitted(d.submissions.length > 0)
     })
   }, [params.id])
+
+  async function run() {
+    if (!assignment || assignment.language !== 'python') return
+    setRunning(true)
+    setOutput(null)
+    const out = await runCode(code)
+    setOutput(out)
+    setRunning(false)
+  }
 
   async function submit() {
     setSubmitting(true)
@@ -41,7 +54,6 @@ export default function AssignmentDetailPage() {
     if (!res.ok) { toast.error('Submission failed'); return }
     toast.success('Assignment submitted! ✅')
     setSubmitted(true)
-    // Refresh
     const updated = await fetch(`/api/assignments/${params.id}`)
     setAssignment(await updated.json())
   }
@@ -50,6 +62,7 @@ export default function AssignmentDetailPage() {
 
   const submission = assignment.submissions[0]
   const isGraded = submission?.score !== null
+  const isPython = assignment.language === 'python'
 
   return (
     <div className="p-6 md:p-8 max-w-4xl">
@@ -85,19 +98,44 @@ export default function AssignmentDetailPage() {
         </div>
       )}
 
-      <div className="mb-4">
+      <div className="mb-2">
         <div className="flex items-center justify-between mb-2">
           <label className="label">Your Code</label>
-          {submitted && <span className="badge bg-green-100 text-green-700 flex items-center gap-1"><CheckCircle size={11} />Submitted {formatDate(submission.submittedAt)}</span>}
+          <div className="flex items-center gap-2">
+            {isPython && !isGraded && (
+              <button
+                onClick={run}
+                disabled={running || pyLoading}
+                className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              >
+                <Play size={13} />
+                {pyLoading ? 'Loading Python…' : running ? 'Running…' : 'Run Code'}
+              </button>
+            )}
+            {submitted && (
+              <span className="badge bg-green-100 text-green-700 flex items-center gap-1">
+                <CheckCircle size={11} />Submitted {formatDate(submission.submittedAt)}
+              </span>
+            )}
+          </div>
         </div>
-        <CodeEditor
-          value={code}
-          onChange={setCode}
-          language={assignment.language}
-          height="400px"
-          readOnly={isGraded}
-        />
+        <CodeEditor value={code} onChange={setCode} language={assignment.language} height="400px" readOnly={isGraded} />
       </div>
+
+      {/* Output panel */}
+      {output !== null && (
+        <div className="mb-4 rounded-xl border border-gray-700 bg-gray-900 overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
+            <Terminal size={13} className="text-gray-400" />
+            <span className="text-xs text-gray-400 font-mono">Output</span>
+          </div>
+          <div className="p-3 font-mono text-sm min-h-[48px]">
+            {output.stdout && <pre className="text-green-400 whitespace-pre-wrap">{output.stdout}</pre>}
+            {output.stderr && <pre className="text-red-400 whitespace-pre-wrap">{output.stderr}</pre>}
+            {!output.stdout && !output.stderr && <span className="text-gray-500">No output</span>}
+          </div>
+        </div>
+      )}
 
       {!isGraded && (
         <button onClick={submit} disabled={submitting} className="btn-primary w-full py-3 text-base flex items-center justify-center gap-2">

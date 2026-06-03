@@ -120,6 +120,107 @@ Return ONLY valid JSON array. No markdown, no explanation. Start with [ and end 
   }
 }
 
+export async function gradeCode({
+  title,
+  description,
+  language,
+  maxScore,
+  starterCode,
+  studentCode,
+  gradeLevel,
+}: {
+  title: string
+  description: string
+  language: string
+  maxScore: number
+  starterCode?: string | null
+  studentCode: string
+  gradeLevel?: string | null
+}): Promise<{ score: number; feedback: string }> {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+
+  const prompt = `You are grading a coding assignment for a Nigerian school student.
+
+Assignment: ${title}
+Instructions: ${description}
+Language: ${language}
+Grade Level: ${gradeLevel ?? 'Secondary'}
+Max Score: ${maxScore}
+${starterCode ? `Starter Code:\n${starterCode}` : ''}
+
+Student's Submission:
+\`\`\`${language}
+${studentCode}
+\`\`\`
+
+Grade this submission on a scale of 0–${maxScore}. Consider:
+- Correctness: Does it solve the problem?
+- Code quality: Is it readable and well-structured?
+- Effort: Did the student attempt the task meaningfully?
+
+Return ONLY valid JSON (no markdown):
+{
+  "score": <integer 0–${maxScore}>,
+  "feedback": "<2-3 encouraging sentences explaining the score, pointing out what was good and one specific improvement. Use a warm, teacher tone. Mention something specific from their code.>"
+}`
+
+  const result = await model.generateContent(prompt)
+  const text = result.response.text()
+  const match = text.match(/\{[\s\S]*\}/)
+  if (!match) throw new Error('No JSON in response')
+  const parsed = JSON.parse(match[0])
+  return {
+    score: Math.min(maxScore, Math.max(0, parseInt(parsed.score))),
+    feedback: parsed.feedback,
+  }
+}
+
+export async function generateDailyChallenge(date: string): Promise<{
+  title: string
+  description: string
+  language: string
+  starterCode: string
+  solution: string
+  xp: number
+  difficulty: string
+}> {
+  const dayOfWeek = new Date(date).getDay()
+  const difficulties = ['easy', 'easy', 'medium', 'medium', 'hard', 'medium', 'easy']
+  const difficulty = difficulties[dayOfWeek]
+  const xpMap = { easy: 30, medium: 50, hard: 80 } as const
+
+  const prompt = `Generate a Python coding challenge for Nigerian secondary school students (ages 12-18).
+
+Date: ${date}
+Difficulty: ${difficulty}
+Theme: Use a Nigerian context (market, NEPA light, danfo bus, suya, football, etc.)
+
+Return ONLY valid JSON (no markdown) with this exact shape:
+{
+  "title": "short catchy title",
+  "description": "1-2 sentence problem statement using Nigerian context",
+  "language": "python",
+  "starterCode": "# starter code with comments\\n",
+  "solution": "complete working solution code",
+  "xp": ${xpMap[difficulty as keyof typeof xpMap]},
+  "difficulty": "${difficulty}"
+}
+
+Rules:
+- The solution must be runnable Python 3, max 10 lines
+- starterCode should have the function signature and helpful comments
+- description must be solvable by a beginner knowing print, variables, loops, if-else
+- For hard: may use functions or lists`
+
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const result = await model.generateContent(prompt)
+  const text = result.response.text()
+
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) throw new Error('No JSON in response')
+  return JSON.parse(jsonMatch[0])
+}
+
 export type GeneratedQuiz = {
   title: string
   timeLimitSeconds: number

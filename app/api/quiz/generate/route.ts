@@ -3,11 +3,16 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { generateQuiz } from '@/lib/cody'
 import { retrieveRelevantChunks } from '@/lib/rag'
+import { rateLimit } from '@/lib/rateLimit'
 
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.user.role !== 'TEACHER') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  if (!rateLimit(`quiz-gen:${session.user.id}`, 5, 60_000)) {
+    return NextResponse.json({ error: 'Too many quiz generations — wait a minute.' }, { status: 429 })
+  }
 
   const { lessonId, numQuestions = 10 } = await req.json()
 

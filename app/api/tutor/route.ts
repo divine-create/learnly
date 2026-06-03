@@ -3,10 +3,15 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { askCody } from '@/lib/cody'
 import { retrieveRelevantChunks } from '@/lib/rag'
+import { rateLimit } from '@/lib/rateLimit'
 
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  if (!rateLimit(`tutor:${session.user.id}`, 30, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests — slow down a bit!' }, { status: 429 })
+  }
 
   const { sessionId, lessonId, question, history } = await req.json()
 

@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-
-const BADGES = [
-  { name: 'First Quiz', condition: 'first_quiz', icon: '🎯' },
-  { name: 'Perfect Score', condition: 'perfect_score', icon: '⭐' },
-  { name: 'Speed Demon', condition: 'speed_demon', icon: '⚡' },
-]
+import { awardBadge, checkXpBadges, updateStreak } from '@/lib/badges'
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await auth()
@@ -22,7 +17,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   })
   if (!quiz) return NextResponse.json({ error: 'Quiz not found' }, { status: 404 })
 
-  // Score calculation
   let correct = 0
   const results = quiz.questions.map((q, i) => {
     const isCorrect = answers[i] === q.correctIndex
@@ -41,52 +35,46 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const xpEarned = results.reduce((s, r) => s + r.xp, 0)
 
   const attempt = await prisma.quizAttempt.create({
-    data: {
-      quizId: params.id,
-      studentId,
-      score,
-      xpEarned,
-      timeTaken,
-      answers: JSON.stringify(answers),
-    },
+    data: { quizId: params.id, studentId, score, xpEarned, timeTaken, answers: JSON.stringify(answers) },
   })
 
   // Update XP
-  await prisma.studentXP.upsert({
+  const xpRecord = await prisma.studentXP.upsert({
     where: { studentId },
     create: { studentId, totalXp: xpEarned, lastActive: new Date() },
-    update: { totalXp: { increment: xpEarned }, lastActive: new Date() },
+    update: { totalXp: { increment: xpEarned } },
   })
+  const newTotalXp = (xpRecord.totalXp || 0) + xpEarned
 
-  // Check and award badges
+  // Update streak
+  const streakDays = await updateStreak(studentId)
+
+  // Award badges
   const earnedBadges: string[] = []
 
   const prevAttempts = await prisma.quizAttempt.count({ where: { studentId } })
   if (prevAttempts === 1) {
-    await awardBadge(studentId, 'first_quiz')
-    earnedBadges.push('First Quiz 🎯')
+    const b = await awardBadge(studentId, 'first_quiz')
+    if (b) earnedBadges.push(`${b.icon} ${b.name}`)
   }
   if (score === 100) {
-    await awardBadge(studentId, 'perfect_score')
-    earnedBadges.push('Perfect Score ⭐')
+    const b = await awardBadge(studentId, 'perfect_score')
+    if (b) earnedBadges.push(`${b.icon} ${b.name}`)
   }
   if (timeTaken < quiz.timeLimitSeconds * 0.3) {
-    await awardBadge(studentId, 'speed_demon')
-    earnedBadges.push('Speed Demon ⚡')
+    const b = await awardBadge(studentId, 'speed_demon')
+    if (b) earnedBadges.push(`${b.icon} ${b.name}`)
+  }
+  if (streakDays >= 3) {
+    const b = await awardBadge(studentId, 'streak_3')
+    if (b) earnedBadges.push(`${b.icon} ${b.name}`)
   }
 
-  return NextResponse.json({ attemptId: attempt.id, score, xpEarned, correct, total: quiz.questions.length, results, earnedBadges })
-}
+  const xpBadges = await checkXpBadges(studentId, newTotalXp)
+  earnedBadges.push(...xpBadges)
 
-async function awardBadge(studentId: string, condition: string) {
-  try {
-    const badge = await prisma.badge.findFirst({ where: { condition } })
-    if (!badge) return
-    const existing = await prisma.studentBadge.findUnique({
-      where: { studentId_badgeId: { studentId, badgeId: badge.id } },
-    })
-    if (!existing) {
-      await prisma.studentBadge.create({ data: { studentId, badgeId: badge.id } })
-    }
-  } catch {}
+  return NextResponse.json({
+    attemptId: attempt.id, score, xpEarned, correct,
+    total: quiz.questions.length, results, earnedBadges, streakDays,
+  })
 }

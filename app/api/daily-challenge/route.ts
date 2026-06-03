@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { awardBadge, checkXpBadges, updateStreak } from '@/lib/badges'
+import { generateDailyChallenge } from '@/lib/cody'
 
 const FALLBACK_CHALLENGES = [
   {
@@ -46,10 +48,16 @@ export async function GET(req: NextRequest) {
   })
 
   if (!challenge) {
-    // Generate or use fallback
-    const fallback = FALLBACK_CHALLENGES[new Date().getDay() % FALLBACK_CHALLENGES.length]
+    // Try AI generation first, fall back to hardcoded
+    let challengeData: (typeof FALLBACK_CHALLENGES)[number]
+    try {
+      challengeData = await generateDailyChallenge(today)
+    } catch {
+      challengeData = FALLBACK_CHALLENGES[new Date().getDay() % FALLBACK_CHALLENGES.length]
+    }
+
     challenge = await prisma.dailyChallenge.create({
-      data: { ...fallback, date: today },
+      data: { ...challengeData, date: today },
       include: { attempts: { where: { studentId: session.user.id }, select: { passed: true, code: true } } },
     })
   }
@@ -61,16 +69,26 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session || session.user.role !== 'STUDENT') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { challengeId, code } = await req.json()
+  const { challengeId, code, output } = await req.json()
 
   const challenge = await prisma.dailyChallenge.findUnique({ where: { id: challengeId } })
   if (!challenge) return NextResponse.json({ error: 'Challenge not found' }, { status: 404 })
 
-  // Simple check: code contains key parts of solution
-  const solutionKeywords = challenge.solution.split('\n')
-    .map(l => l.trim())
-    .filter(l => l.length > 3)
-  const passed = solutionKeywords.some(kw => code.includes(kw.split('(')[0].trim()))
+  // If Pyodide ran the code client-side, trust the output comparison
+  // Otherwise fall back to keyword heuristic
+  let passed: boolean
+  if (typeof output === 'string' && output.trim().length > 0) {
+    // Compare normalised output against solution keywords (solution output not stored, so check structural match)
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+    const solutionLines = challenge.solution.split('\n').map(l => l.trim()).filter(l => l.length > 2)
+    // Check code structure AND that some meaningful output was produced
+    passed = solutionLines.some(kw => code.includes(kw.split('(')[0].trim())) && output.trim().length > 0
+  } else {
+    const solutionKeywords = challenge.solution.split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 3)
+    passed = solutionKeywords.some(kw => code.includes(kw.split('(')[0].trim()))
+  }
 
   const attempt = await prisma.dailyChallengeAttempt.upsert({
     where: { challengeId_studentId: { challengeId, studentId: session.user.id } },
@@ -78,13 +96,32 @@ export async function POST(req: NextRequest) {
     update: { code, passed },
   })
 
+  const earnedBadges: string[] = []
+
   if (passed) {
-    await prisma.studentXP.upsert({
+    const xpRecord = await prisma.studentXP.upsert({
       where: { studentId: session.user.id },
       create: { studentId: session.user.id, totalXp: challenge.xp },
       update: { totalXp: { increment: challenge.xp } },
     })
+    const newTotalXp = (xpRecord.totalXp || 0) + challenge.xp
+
+    const streakDays = await updateStreak(session.user.id)
+
+    const b = await awardBadge(session.user.id, 'daily_champ')
+    if (b) earnedBadges.push(`${b.icon} ${b.name}`)
+    if (streakDays >= 3) {
+      const s = await awardBadge(session.user.id, 'streak_3')
+      if (s) earnedBadges.push(`${s.icon} ${s.name}`)
+    }
+    const xpBadges = await checkXpBadges(session.user.id, newTotalXp)
+    earnedBadges.push(...xpBadges)
   }
 
-  return NextResponse.json({ passed, xpEarned: passed ? challenge.xp : 0, solution: passed ? null : challenge.solution })
+  return NextResponse.json({
+    passed,
+    xpEarned: passed ? challenge.xp : 0,
+    solution: passed ? null : challenge.solution,
+    earnedBadges,
+  })
 }

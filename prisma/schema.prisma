@@ -65,10 +65,13 @@ model User {
 }
 
 model ParentChild {
-  parentId  String
-  childId   String
-  parent    User   @relation("ParentChildren", fields: [parentId], references: [id])
-  child     User   @relation("ChildParents", fields: [childId], references: [id])
+  parentId   String
+  childId    String
+  status     String    @default("pending") // pending | approved | rejected
+  createdAt  DateTime  @default(now())
+  approvedAt DateTime?
+  parent     User      @relation("ParentChildren", fields: [parentId], references: [id])
+  child      User      @relation("ChildParents", fields: [childId], references: [id])
   @@id([parentId, childId])
 }
 

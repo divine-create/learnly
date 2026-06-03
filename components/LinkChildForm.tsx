@@ -18,10 +18,9 @@ export default function LinkChildForm() {
     const data = await res.json()
     setLoading(false)
     if (!res.ok) { toast.error(data.error); return }
-    toast.success(`Linked to ${data.child.name}! Refresh to see their dashboard.`)
+    toast.success(`Request sent for ${data.child.name}. They (or their school admin) must approve it before you can see their progress.`)
     setEmail('')
-    // Reload to show the child's data
-    setTimeout(() => window.location.reload(), 1500)
+    setTimeout(() => window.location.reload(), 2000)
   }
 
   return (

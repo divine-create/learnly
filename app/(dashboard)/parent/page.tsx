@@ -11,23 +11,29 @@ export default async function ParentDashboard() {
 
   const parentId = session.user.id
 
-  const childLinks = await prisma.parentChild.findMany({
-    where: { parentId },
-    include: {
-      child: {
-        include: {
-          classEnrollments: { include: { class: { include: { teacher: { select: { name: true } } } } } },
-          studentXp: true,
-          studentBadges: { include: { badge: true }, orderBy: { earnedAt: 'desc' }, take: 5 },
-          quizAttempts: {
-            include: { quiz: { select: { title: true } } },
-            orderBy: { completedAt: 'desc' },
-            take: 5,
+  const [childLinks, pendingLinks] = await Promise.all([
+    prisma.parentChild.findMany({
+      where: { parentId, status: 'approved' },
+      include: {
+        child: {
+          include: {
+            classEnrollments: { include: { class: { include: { teacher: { select: { name: true } } } } } },
+            studentXp: true,
+            studentBadges: { include: { badge: true }, orderBy: { earnedAt: 'desc' }, take: 5 },
+            quizAttempts: {
+              include: { quiz: { select: { title: true } } },
+              orderBy: { completedAt: 'desc' },
+              take: 5,
+            },
           },
         },
       },
-    },
-  })
+    }),
+    prisma.parentChild.findMany({
+      where: { parentId, status: 'pending' },
+      include: { child: { select: { name: true } } },
+    }),
+  ])
 
   return (
     <div className="p-8">
@@ -35,6 +41,21 @@ export default async function ParentDashboard() {
         <h1 className="text-2xl font-bold text-gray-900">Parent Dashboard</h1>
         <p className="text-gray-500 mt-1">Track your child's coding journey</p>
       </div>
+
+      {pendingLinks.length > 0 && (
+        <div className="card mb-6 border-l-4 border-amber-400 bg-amber-50">
+          <div className="flex items-start gap-3">
+            <Clock size={20} className="text-amber-500 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-gray-800">Awaiting approval</h3>
+              <p className="text-sm text-gray-600">
+                {pendingLinks.map(l => l.child.name).join(', ')} {pendingLinks.length === 1 ? 'has' : 'have'} not yet
+                approved your request. They (or their school admin) must approve it before you can view their progress.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {childLinks.length === 0 ? (
         <div className="card text-center py-16">
@@ -163,6 +184,14 @@ export default async function ParentDashboard() {
             </div>
           )
         })
+      )}
+
+      {childLinks.length > 0 && (
+        <div className="card text-center mt-4">
+          <h3 className="font-semibold text-gray-700 mb-1">Link another child</h3>
+          <p className="text-sm text-gray-500">Enter their school email to send an approval request.</p>
+          <LinkChildForm />
+        </div>
       )}
     </div>
   )

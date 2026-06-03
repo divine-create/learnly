@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import Link from 'next/link'
 import { BookOpen, Brain, Trophy, Zap, ArrowRight, Star } from 'lucide-react'
 import { xpToLevel } from '@/lib/utils'
+import ParentAccessRequests from '@/components/ParentAccessRequests'
 
 export default async function StudentDashboard() {
   const session = await auth()
@@ -55,6 +56,8 @@ export default async function StudentDashboard() {
         <h1 className="text-3xl font-extrabold text-gray-900">{greeting}, {firstName}!</h1>
         <p className="text-gray-600 mt-1">Ready to code something amazing today?</p>
       </div>
+
+      <ParentAccessRequests />
 
       {/* XP card */}
       <div className="bg-gradient-to-r from-brand-600 to-indigo-600 rounded-2xl p-6 mb-8 text-white">

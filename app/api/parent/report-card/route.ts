@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const studentId = searchParams.get('studentId')
   if (!studentId) return NextResponse.json({ error: 'studentId required' }, { status: 400 })
 
-  const link = await prisma.parentChild.findFirst({ where: { parentId: session.user.id, childId: studentId } })
+  const link = await prisma.parentChild.findFirst({ where: { parentId: session.user.id, childId: studentId, status: 'approved' } })
   if (!link) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const [student, xpRecord, badgeCount, enrollments, currentTerm, allAttendance] = await Promise.all([

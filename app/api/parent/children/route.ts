@@ -7,7 +7,7 @@ export async function GET() {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const links = await db.parentChild.findMany({
-    where: { parentId: session.user.id },
+    where: { parentId: session.user.id, status: 'approved' },
     include: { child: { select: { id: true, name: true, gradeLevel: true } } },
   })
 

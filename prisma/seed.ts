@@ -119,7 +119,7 @@ async function main() {
       passwordHash: await bcrypt.hash('parent123', 12),
     },
   })
-  await prisma.parentChild.create({ data: { parentId: parent.id, childId: student.id } })
+  await prisma.parentChild.create({ data: { parentId: parent.id, childId: student.id, status: 'approved', approvedAt: new Date() } })
   console.log('✅ Parent created:', parent.email)
 
   // Python class

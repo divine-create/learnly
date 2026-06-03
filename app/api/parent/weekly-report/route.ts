@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   }
 
   const links = await prisma.parentChild.findMany({
-    where: { parentId: session.user.id },
+    where: { parentId: session.user.id, status: 'approved' },
     include: {
       child: {
         include: {

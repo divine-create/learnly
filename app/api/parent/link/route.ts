@@ -31,13 +31,21 @@ export async function POST(req: NextRequest) {
   const existing = await prisma.parentChild.findUnique({
     where: { parentId_childId: { parentId: session.user.id, childId: child.id } },
   })
-  if (existing) return NextResponse.json({ error: 'Already linked to this child' }, { status: 409 })
+  if (existing) {
+    if (existing.status === 'approved') return NextResponse.json({ error: 'Already linked to this child' }, { status: 409 })
+    if (existing.status === 'pending') return NextResponse.json({ error: 'A request is already pending approval' }, { status: 409 })
+    // A previously rejected request may be re-sent: reset it to pending.
+    await prisma.parentChild.update({
+      where: { parentId_childId: { parentId: session.user.id, childId: child.id } },
+      data: { status: 'pending', approvedAt: null },
+    })
+  } else {
+    await prisma.parentChild.create({
+      data: { parentId: session.user.id, childId: child.id, status: 'pending' },
+    })
+  }
 
-  await prisma.parentChild.create({
-    data: { parentId: session.user.id, childId: child.id },
-  })
-
-  return NextResponse.json({ success: true, child: { name: child.name, gradeLevel: child.gradeLevel } })
+  return NextResponse.json({ pending: true, child: { name: child.name, gradeLevel: child.gradeLevel } })
 }
 
 // DELETE — unlink a child

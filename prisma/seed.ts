@@ -6,12 +6,19 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('🌱 Seeding CodeBridge Nigeria…')
 
-  // Clear existing data
+  // Clear existing data — order matters for FK constraints
   await prisma.studentBadge.deleteMany()
   await prisma.badge.deleteMany()
+  await prisma.dailyChallengeAttempt.deleteMany()
+  await prisma.dailyChallenge.deleteMany()
   await prisma.quizAttempt.deleteMany()
   await prisma.question.deleteMany()
   await prisma.quiz.deleteMany()
+  await prisma.assignmentSubmission.deleteMany()
+  await prisma.assignment.deleteMany()
+  await prisma.attendance.deleteMany()
+  await prisma.announcement.deleteMany()
+  await prisma.flashcard.deleteMany()
   await prisma.materialChunk.deleteMany()
   await prisma.material.deleteMany()
   await prisma.lessonProgress.deleteMany()
@@ -21,6 +28,8 @@ async function main() {
   await prisma.classStudent.deleteMany()
   await prisma.class.deleteMany()
   await prisma.parentChild.deleteMany()
+  await prisma.screenTime.deleteMany()
+  await prisma.message.deleteMany()
   await prisma.studentXP.deleteMany()
   await prisma.user.deleteMany()
   await prisma.school.deleteMany()
@@ -34,6 +43,8 @@ async function main() {
       { name: 'Code Starter', description: 'Earned 100 XP!', icon: '🚀', condition: 'xp_100', xpRequired: 100 },
       { name: 'Bug Smasher', description: 'Earned 300 XP!', icon: '🐛', condition: 'xp_300', xpRequired: 300 },
       { name: 'Class Champion', description: 'Top of the class leaderboard!', icon: '🏆', condition: 'class_champion', xpRequired: 0 },
+      { name: '3-Day Streak', description: 'Coded 3 days in a row!', icon: '🔥', condition: 'streak_3', xpRequired: 0 },
+      { name: 'Daily Champ', description: 'Completed a daily challenge!', icon: '⚡', condition: 'daily_champ', xpRequired: 0 },
     ],
   })
 

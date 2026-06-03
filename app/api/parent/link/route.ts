@@ -22,6 +22,11 @@ export async function POST(req: NextRequest) {
   if (!child) return NextResponse.json({ error: 'No account found with that email' }, { status: 404 })
   if (child.role !== 'STUDENT') return NextResponse.json({ error: 'That account is not a student' }, { status: 400 })
   if (child.id === session.user.id) return NextResponse.json({ error: 'Cannot link to yourself' }, { status: 400 })
+  // A parent may only link to a student in their own school — prevents harvesting
+  // arbitrary students' data by guessing emails across tenants.
+  if (session.user.schoolId && child.schoolId !== session.user.schoolId) {
+    return NextResponse.json({ error: 'No account found with that email' }, { status: 404 })
+  }
 
   const existing = await prisma.parentChild.findUnique({
     where: { parentId_childId: { parentId: session.user.id, childId: child.id } },

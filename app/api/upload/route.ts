@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { extractTextFromFile, getFileType } from '@/lib/fileParser'
 import { embedAndStoreChunks } from '@/lib/rag'
+import { canManageClass, loadLessonForAuthz, type Actor } from '@/lib/authz'
 import path from 'path'
 import fs from 'fs'
 
@@ -18,6 +19,12 @@ export async function POST(req: NextRequest) {
 
     if (!file || !lessonId) {
       return NextResponse.json({ error: 'File and lessonId are required' }, { status: 400 })
+    }
+
+    const lesson = await loadLessonForAuthz(lessonId)
+    if (!lesson) return NextResponse.json({ error: 'Lesson not found' }, { status: 404 })
+    if (!canManageClass(session.user as Actor, lesson.class)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const maxSize = 20 * 1024 * 1024 // 20MB

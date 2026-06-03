@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { canManageClass, loadClassForAuthz, type Actor } from '@/lib/authz'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session || session.user.role !== 'TEACHER') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
-  const classId = searchParams.get('classId')!
+  const classId = searchParams.get('classId')
+  if (!classId) return NextResponse.json({ error: 'classId required' }, { status: 400 })
+
+  const cls = await loadClassForAuthz(classId)
+  if (!cls) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!canManageClass(session.user as Actor, cls)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const [students, quizAttempts, submissions] = await Promise.all([
     prisma.classStudent.findMany({

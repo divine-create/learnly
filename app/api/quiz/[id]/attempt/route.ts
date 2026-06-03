@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { awardBadge, checkXpBadges, updateStreak } from '@/lib/badges'
+import { isEnrolled } from '@/lib/authz'
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await auth()
@@ -13,9 +14,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const quiz = await prisma.quiz.findUnique({
     where: { id: params.id },
-    include: { questions: { orderBy: { orderIndex: 'asc' } } },
+    include: {
+      questions: { orderBy: { orderIndex: 'asc' } },
+      lesson: { select: { classId: true } },
+    },
   })
   if (!quiz) return NextResponse.json({ error: 'Quiz not found' }, { status: 404 })
+
+  // Only students enrolled in the quiz's class (and only published quizzes) may attempt it.
+  if (quiz.status !== 'published' || !(await isEnrolled(studentId, quiz.lesson.classId))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   let correct = 0
   const results = quiz.questions.map((q, i) => {
